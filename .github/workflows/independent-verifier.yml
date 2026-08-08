@@ -1,0 +1,272 @@
+# The INDEPENDENT VERIFIER — a reference workflow for a SEPARATELY CONTROLLED repository.
+#
+# WHAT THIS IS. The workflow a security organisation deploys in ITS OWN repository (the
+# example assumes `security-org/ship-gate-verifier`) to independently verify a candidate
+# release from a target application repository. The target repository must NOT be able to
+# edit this file, its repository settings, or its environment protections — that separation
+# of write access is what the word "independent" means here, and nothing in this file can
+# create it.
+#
+# WHAT SHIPPING THIS FILE DOES NOT ESTABLISH, stated before anything else: independence.
+# A reference example inside the ship-gate skill is text. Independence exists only when an
+# adopter deploys this under access control the target's maintainers do not hold. A target
+# repository that copies this workflow into itself and runs it has built a self-verification
+# loop with better production values — the principal-separation rule in the authority kit
+# (`_same_party`, `principals.same_principal`) exists to catch exactly that, and will.
+#
+# EVERY THIRD-PARTY ACTION IS PINNED BY IMMUTABLE COMMIT SHA, never by tag. A tag moves; a
+# SHA does not. The version comment beside each pin is a courtesy for humans and is NOT what
+# is trusted. (SHAs resolved 2026-08-07 from each repository's signed tag via the Go module
+# proxy's origin metadata; re-verify them when you adopt this file — trusting a pin you did
+# not check is a pin someone else chose.)
+#
+# WHAT THE VERIFIER'S OWN RUN PROVES, and how: this workflow runs on GitHub-hosted
+# infrastructure and signs its verification bundle KEYLESSLY with its workload identity, so
+# the resulting Fulcio certificate names THIS workflow, in THIS repository, at THIS ref —
+# the identity the target's external policy must list under `authorizedVerifiers`. The
+# verifier cannot demote itself into a self-issued key by misconfiguration: there is no key
+# to leak because none exists.
+
+name: ship-gate independent verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repository:
+        description: "owner/name of the repository under judgement"
+        required: true
+      target_run_id:
+        description: "the workflow run that produced the candidate release"
+        required: true
+      target_run_attempt:
+        description: "the attempt within that run; a rerun is a different execution"
+        required: false
+        default: "1"
+      artifact_digest:
+        description: "sha256 (or sha512, prefixed alg:) of the candidate artifact"
+        required: true
+      decision_digest:
+        description: "the ship-gate decision digest being attested"
+        required: true
+
+permissions:
+  # id-token is what makes keyless signing possible: the runner's OIDC token becomes a
+  # short-lived Fulcio certificate naming this workflow. contents:write exists for exactly
+  # one thing — persisting the policy rollback state to this repository's protected
+  # `policy-state` branch (see the last step); everything else only reads.
+  id-token: write
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # THE PROTECTED ENVIRONMENT — of the VERIFIER's repository, not the target's. Its
+    # required reviewers are the security organisation's own second pair of eyes over the
+    # act of vouching. Configure it with: required reviewers who are not target
+    # maintainers, prevent_self_review: true, admin bypass disabled, and a deployment
+    # branch policy pinning this workflow's branch.
+    environment: verification
+    steps:
+      - name: Check out the verifier (this repository, never the target)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # ROLLBACK STATE MUST SURVIVE THE RUNNER. v4.2.0 pointed the state at a runner path,
+      # and a GitHub-hosted runner is ephemeral — the highest-seen policy version vanished
+      # with the run, which is rollback bookkeeping, not rollback protection. The state now
+      # lives on this repository's `policy-state` branch: PROTECTED (require this workflow
+      # as the only pusher; no force-push; no deletion), so history moves forward only.
+      # Equivalent alternatives an org may prefer: object storage with conditional writes
+      # (If-Match), an org policy service, or an append-only signed revision log. What is
+      # NOT equivalent: any path the target's maintainers can write, or any storage that
+      # forgets between runs.
+      - name: Check out the persistent policy-state branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: policy-state
+          path: policy-state
+          persist-credentials: true
+
+      - name: Prepare the evidence directory
+        run: mkdir -p evidence
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Download the candidate artifact from the TARGET's run
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          # Cross-repository download: the artifact comes from the run under judgement.
+          # The token is a READ credential held by the VERIFIER org; a credential is fine,
+          # an answer is not — everything downloaded is re-verified below.
+          repository: ${{ inputs.target_repository }}
+          run-id: ${{ inputs.target_run_id }}
+          name: release-candidate
+          path: candidate/
+          github-token: ${{ secrets.TARGET_READ_TOKEN }}
+
+      # THE CANDIDATE LAYOUT CONVENTION, normalised and ENFORCED before anything reads it.
+      # The target's build workflow uploads a `release-candidate` artifact containing
+      # exactly: `decision.json` (the ship-gate envelope) and ONE release file. This step
+      # fails the run if that convention does not hold — every later path (the generated
+      # config, the digest re-hash, the gh verification) references `candidate/artifact`
+      # and would otherwise dangle, which is how v4.2.1's config pointed at files nothing
+      # created.
+      - name: Normalise the candidate layout
+        run: |
+          test -f candidate/decision.json || { echo "candidate/decision.json missing"; exit 1; }
+          files=$(find candidate -maxdepth 1 -type f ! -name decision.json)
+          count=$(echo "$files" | grep -c . || true)
+          test "$count" = "1" || { echo "expected exactly one release file beside decision.json, found $count"; exit 1; }
+          mv "$files" candidate/artifact
+
+      - name: Verify the GitHub artifact attestation (GitHub's own verifier, actually run)
+        env:
+          # The TARGET's read token, not this repository's ambient github.token: the
+          # attestations being fetched belong to the target repository, and for a private
+          # target the verifier repo's own token has no right to read them. A credential is
+          # fine; it buys reads, never answers.
+          GH_TOKEN: ${{ secrets.TARGET_READ_TOKEN }}
+          TARGET: ${{ inputs.target_repository }}
+        # --repo scopes the certificate check to the target; the EXACT builder workflow is
+        # enforced by ship-gate's external policy (authorizedBuilders), not by a flag the
+        # target could influence. --deny-self-hosted-runners matches the kit's own check.
+        run: |
+          gh attestation verify candidate/artifact \
+            --repo "$TARGET" \
+            --deny-self-hosted-runners \
+            --format json > evidence/gh-attestation-verify.json
+
+      # The attestation BUNDLE the generated config references. `gh attestation download`
+      # writes <digest>.jsonl into the working directory; it is moved to the exact path the
+      # config names, so ship-gate's own gh invocation can verify OFFLINE against the same
+      # material and the bundle rides in the persisted evidence.
+      - name: Download the attestation bundle for the evidence record
+        env:
+          GH_TOKEN: ${{ secrets.TARGET_READ_TOKEN }}
+          TARGET: ${{ inputs.target_repository }}
+        run: |
+          gh attestation download candidate/artifact --repo "$TARGET"
+          mv ./*.jsonl evidence/attestation-bundle.json
+
+      - name: Run the ship-gate authority verification
+        env:
+          # The EXTERNAL POLICY is the verifier org's own artifact: signed by the pinned
+          # policy root, stored in THIS repository (or fetched from the org's policy
+          # service), never read from the target. Rollback state lives here too — outside
+          # the repository under judgement — which is what makes it rollback PROTECTION
+          # rather than rollback bookkeeping.
+          SHIPGATE_AUTHORITY_POLICY: policies/${{ inputs.target_repository }}.json
+          SHIPGATE_AUTHORITY_POLICY_BUNDLE: policies/${{ inputs.target_repository }}.bundle
+          SHIPGATE_AUTHORITY_POLICY_STATE: policy-state/highest-seen.json
+          SHIPGATE_VERIFIER_GITHUB_TOKEN: ${{ secrets.TARGET_READ_TOKEN }}
+        # `observe` records phase 1 of the two-phase observation: the environment AND the
+        # deployment/approval evidence for the target run, raw bytes digest-bound. The
+        # challenge it emits is signed keylessly below, which is what turns a recording
+        # into admissible evidence.
+        run: |
+          python3 scripts/gate.py observe \
+            --decision candidate/decision.json \
+            --repo "${{ inputs.target_repository }}" \
+            --environment production \
+            --run-id "${{ inputs.target_run_id }}" \
+            --run-attempt "${{ inputs.target_run_attempt }}" \
+            --out evidence/observation.json
+
+      - name: Sign the observation challenge with this workflow's identity (keyless)
+        # COSIGN_EXPERIMENTAL is not needed on cosign v3; the ambient OIDC token is used.
+        # The signature is over the challenge that commits to the decision digest, commit,
+        # run, artifact digest, environment and every observed response-body digest — see
+        # authority/live.py observation_challenge for the exact byte contract.
+        run: |
+          cosign sign-blob --yes \
+            --bundle evidence/observation.challenge.bundle \
+            evidence/observation.challenge
+
+      # The authority config is GENERATED here, from verifier-controlled inputs only —
+      # nothing in it comes from the target repository, and the file exists because this
+      # step wrote it, not because anyone supplied it.
+      #
+      # ONE CONSISTENT MODE: LIVE. `attestationBundle` is deliberately ABSENT, so
+      # ship-gate's OWN gh invocation fetches and verifies the attestation from the
+      # GitHub API (token in the next step's env) — that execution is what is
+      # authoritative. The standalone verify output and the downloaded bundle from the
+      # earlier steps are DIAGNOSTIC and persisted evidence for later offline replay;
+      # naming the bundle here as well would make ship-gate verify a file this workflow
+      # wrote instead of the API's answer, which is a weaker claim wearing the same
+      # config key. (For a fully offline replay later, `gate.py verify-bundle` with
+      # attestationBundle + attestationTrustedRoot is the supported path.)
+      - name: Generate the verifier's authority configuration
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          config = {
+              "schema": "shipgate.authority.config/1",
+              "mode": "independent",
+              "evidenceDir": "evidence",
+              "gh": {
+                  "environmentName": "production",
+                  "runId": "${{ inputs.target_run_id }}",
+                  "runAttempt": "${{ inputs.target_run_attempt }}",
+                  "attestationArtifact": "candidate/artifact",
+              },
+              "verifier": {
+                  "observation": "evidence/observation.json",
+                  "bundle": "evidence/observation.challenge.bundle",
+                  "certificateIdentity": ("https://github.com/${{ github.repository }}/"
+                                          ".github/workflows/independent-verifier.yml"
+                                          "@${{ github.ref }}"),
+                  "certificateOidcIssuer": "https://token.actions.githubusercontent.com",
+              },
+          }
+          with open("verifier-config.json", "w") as fh:
+              json.dump(config, fh, indent=2)
+          PYEOF
+
+      - name: Produce the final attestation
+        env:
+          # ship-gate's own gh invocation runs in LIVE mode and needs the TARGET's read
+          # token — the same credential-not-answer as every other read in this file.
+          GH_TOKEN: ${{ secrets.TARGET_READ_TOKEN }}
+        run: |
+          python3 scripts/gate.py attest \
+            --decision candidate/decision.json \
+            --authority-config verifier-config.json \
+            --out evidence/attestation.json
+
+      # Persist the advanced rollback state. Runs LAST and only after a successful
+      # verification, so a failed run cannot burn a version number. The branch protection
+      # (this workflow as sole pusher, no force-push) is what turns this commit into
+      # forward-only history.
+      - name: Persist the policy rollback state
+        run: |
+          cd policy-state
+          git config user.name "ship-gate-verifier"
+          git config user.email "ship-gate-verifier@users.noreply.github.com"
+          git add highest-seen.json
+          git diff --cached --quiet || git commit -m "policy state: ${{ inputs.target_repository }} run ${{ inputs.target_run_id }}"
+          git push origin policy-state
+
+      - name: Upload the verification bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ship-gate-verification-bundle
+          path: evidence/
+          if-no-files-found: error
+
+# DEPLOYMENT CHECKLIST for the adopter (the full procedure is in
+# references/independent-verifier-deployment.md):
+#   1. This file lives in the security org's repository. Target maintainers have NO write
+#      access there — not to code, not to settings, not to environments.
+#   2. The `verification` environment has required reviewers from the security org,
+#      prevent_self_review enabled, admin bypass disabled, and a branch policy.
+#   3. The external policy for each target repository is signed by the org's policy root
+#      and lists THIS workflow's identity
+#      (https://github.com/security-org/ship-gate-verifier/.github/workflows/independent-verifier.yml@refs/heads/main)
+#      under authorizedVerifiers, and the target's exact build workflow under
+#      authorizedBuilders.
+#   4. TARGET_READ_TOKEN is a read-only fine-grained token for the target repository:
+#      actions:read (artifact download), deployments:read, environments:read.
+#   5. The kit's POLICY_ROOTS constant is forked to pin the org's policy-signing identity.
+#      That fork is the deliberate, diff-visible act that makes independence reachable.
