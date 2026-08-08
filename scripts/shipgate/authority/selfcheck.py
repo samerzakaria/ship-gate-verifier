@@ -674,6 +674,21 @@ def check_rule_table(rep):
     rep.check("an OBSERVED, BOUND and POLICY-SATISFYING principal reaches "
               "INDEPENDENTLY_ATTESTED", status is ProvenanceStatus.INDEPENDENTLY_ATTESTED,
               f"{status.value} {codes}")
+    # GitHub's keyless verification proves exact workflow identities but does not provide
+    # numeric owner ids for the verifier.  The externally verified policy is the authority
+    # that resolves two differently-owned, exactly authorised workflows as distinct.
+    policy_resolved = [
+        fact(identity=dict(authentic[0].identity, ids={})),
+        authentic[1], authentic[2],
+        fact(principal=dict(
+            authentic[3].principal,
+            binding=dict(authentic[3].principal["binding"], ids={}))),
+    ]
+    status, codes, _ = evaluate(SemanticStatus.PASSED, policy_resolved)
+    rep.check("an externally verified policy resolves distinct workflow owners without "
+              "unavailable numeric verifier ids",
+              status is ProvenanceStatus.INDEPENDENTLY_ATTESTED,
+              f"{status.value} {codes}")
     for broken, why in (
             (dict(stip_policy, rollbackChecked=False), "unprotected rollback state"),
             (dict(stip_policy, authorizedBuilders=[

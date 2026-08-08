@@ -455,6 +455,32 @@ def _same_party(principal, identity):
             break
     if not builder:
         return False
+
+    # A verified external policy may resolve the otherwise ambiguous workflow-to-workflow
+    # comparison.  GitHub's keyless certificate proves the exact verifier workflow identity,
+    # but that certificate path does not expose a numeric owner id.  Requiring owner ids on
+    # both sides therefore made the documented positive L3 path unreachable even when the
+    # externally signed policy named both exact workflows.  Treat them as distinct only when
+    # the verified policy authorises both exact identities and their owners differ.  Same-owner
+    # and same-repository workflows still fall through to the stricter principal comparison.
+    policy = (binding or {}).get("policy") if isinstance(binding, dict) else None
+    if (binding or {}).get("verifierAuthorized") is True and isinstance(policy, dict):
+        from . import enforcement
+        authorised_builders = tuple(policy.get("authorizedBuilders") or ())
+        authorised_verifiers = tuple(policy.get("authorizedVerifiers") or ())
+        builder_norm = enforcement.normalise_identity(builder)
+        verifier_norm = enforcement.normalise_identity(str(who))
+        builder_record = principals.normalise(builder)
+        verifier_record = principals.normalise(str(who))
+        if (builder_record.get("kind") == "workflow"
+                and verifier_record.get("kind") == "workflow"
+                and builder_record.get("owner", "").lower()
+                != verifier_record.get("owner", "").lower()
+                and any(enforcement.normalise_identity(item) == builder_norm
+                        for item in authorised_builders)
+                and any(enforcement.normalise_identity(item) == verifier_norm
+                        for item in authorised_verifiers)):
+            return False
     left = principals.normalise(builder, identity.get("ids"))
     right = principals.normalise(str(who), (binding or {}).get("ids"))
     try:
