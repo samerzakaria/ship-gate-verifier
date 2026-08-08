@@ -121,6 +121,18 @@ jobs:
           test "$count" = "1" || { echo "expected exactly one release file beside decision.json, found $count"; exit 1; }
           mv "$files" candidate/artifact
 
+      # workflow_dispatch inputs are claims, never evidence. Recompute both digests from
+      # the downloaded candidate and compare them with the decision envelope before any
+      # authority work begins. This closes the v4.2.2 reference-workflow gap where these
+      # two required inputs looked load-bearing but were never read.
+      - name: Bind the requested digests to the downloaded candidate
+        run: |
+          PYTHONPATH=scripts python3 -m shipgate.authority.candidate \
+            --decision candidate/decision.json \
+            --artifact candidate/artifact \
+            --expected-decision-digest "${{ inputs.decision_digest }}" \
+            --expected-artifact-digest "${{ inputs.artifact_digest }}"
+
       - name: Verify the GitHub artifact attestation (GitHub's own verifier, actually run)
         env:
           # The TARGET's read token, not this repository's ambient github.token: the
@@ -137,6 +149,11 @@ jobs:
             --repo "$TARGET" \
             --deny-self-hosted-runners \
             --format json > evidence/gh-attestation-verify.json
+          gh --version > evidence/gh-version.txt
+          PYTHONPATH=scripts python3 -m shipgate.authority.external_time \
+            --verify-output evidence/gh-attestation-verify.json \
+            --gh-version evidence/gh-version.txt \
+            > evidence/external-time.txt
 
       # The attestation BUNDLE the generated config references. `gh attestation download`
       # writes <digest>.jsonl into the working directory; it is moved to the exact path the
@@ -171,6 +188,7 @@ jobs:
             --environment production \
             --run-id "${{ inputs.target_run_id }}" \
             --run-attempt "${{ inputs.target_run_attempt }}" \
+            --external-time "$(cat evidence/external-time.txt)" \
             --out evidence/observation.json \
             candidate/decision.json
 
@@ -204,6 +222,7 @@ jobs:
           config = {
               "schema": "shipgate.authority.config/1",
               "mode": "independent",
+              "externalTime": int(open("evidence/external-time.txt").read().strip()),
               "evidenceDir": "evidence",
               "gh": {
                   "environmentName": "production",
