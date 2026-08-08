@@ -69,6 +69,34 @@ def _subject_pins(decision, config):
     return repository, commit, ""
 
 
+def _github_subject_pins(decision, config):
+    """Canonicalise a checkout folder name only through a GitHub-verified constraint.
+
+    The semantic CLI intentionally names a local checkout by its leaf directory. GitHub's
+    APIs and artifact verifier require ``owner/repo``.  ``gh.repo`` is not trusted as an
+    identity: it is merely the constraint passed to the external GitHub verification.  A
+    short subject can be expanded only when its leaf matches; an already-qualified or
+    mismatching subject is refused.  The external tool/API must still establish the fact.
+    """
+    repository, commit, mismatch = _subject_pins(decision, config)
+    if mismatch:
+        return repository, commit, mismatch
+    configured = str((config.gh or {}).get("repo") or "").strip()
+    if not configured:
+        return repository, commit, ""
+    if configured.count("/") != 1 or any(not p for p in configured.split("/")):
+        return repository, commit, f"gh.repo {configured!r} is not an owner/repo pair"
+    if "/" in repository:
+        if repository.lower() != configured.lower():
+            return repository, commit, (
+                f"gh.repo {configured!r} disagrees with decision subject {repository!r}")
+        return repository, commit, ""
+    if configured.rsplit("/", 1)[1].lower() != repository.lower():
+        return repository, commit, (
+            f"gh.repo {configured!r} does not end with decision subject {repository!r}")
+    return configured, commit, ""
+
+
 class CosignBundleVerifier(Verifier):
     """Binding always; identity too, but ONLY from a keyless bundle.
 
@@ -536,7 +564,7 @@ class GhAttestationVerifier(Verifier):
                                 "gh.attestationArtifact is not configured; there is no "
                                 "artifact to verify a GitHub attestation for")
 
-        repository, commit, mismatch = _subject_pins(decision, config)
+        repository, commit, mismatch = _github_subject_pins(decision, config)
         if mismatch:
             return self._refuse(R.AUT_BINDING_MISMATCH, mismatch)
 
@@ -712,7 +740,7 @@ class GithubOidcIdentityVerifier(Verifier):
             return self._refuse(claims_res.reason_code, claims_res.detail)
 
         claims = claims_res.data["claims"]
-        repository, commit, mismatch = _subject_pins(decision, config)
+        repository, commit, mismatch = _github_subject_pins(decision, config)
         if mismatch:
             return self._refuse(R.AUT_BINDING_MISMATCH, mismatch)
 
@@ -784,7 +812,7 @@ class GithubEnvironmentPrincipalVerifier(Verifier):
         if not repo_res.ok:
             return self._refuse(repo_res.reason_code, repo_res.detail)
 
-        repository, _commit, mismatch = _subject_pins(decision, config)
+        repository, _commit, mismatch = _github_subject_pins(decision, config)
         if mismatch:
             return self._refuse(R.AUT_BINDING_MISMATCH, mismatch)
         binding_res = gh_parser.check_repo_binding(repo_res.data, repository)
@@ -983,7 +1011,7 @@ class GithubEnvironmentPrincipalVerifier(Verifier):
         except ImportError as exc:  # pragma: no cover
             return self._refuse(R.AUT_NOT_CONFIGURED,
                                 f"the live observer is unavailable: {exc}")
-        repository, _commit, mismatch = _subject_pins(decision, config)
+        repository, _commit, mismatch = _github_subject_pins(decision, config)
         if mismatch:
             return self._refuse(R.AUT_BINDING_MISMATCH, mismatch)
         name = config.gh.get("environmentName")

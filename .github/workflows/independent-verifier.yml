@@ -227,6 +227,7 @@ jobs:
               # evidenceDir would make the positive path unreachable.
               "evidenceDir": ".",
               "gh": {
+                  "repo": "${{ inputs.target_repository }}",
                   "environmentName": "production",
                   "runId": "${{ inputs.target_run_id }}",
                   "runAttempt": "${{ inputs.target_run_attempt }}",
