@@ -248,7 +248,13 @@ jobs:
           git diff --cached --quiet || git commit -m "policy state: ${{ inputs.target_repository }} run ${{ inputs.target_run_id }}"
           git push origin policy-state
 
+      # ALWAYS. A refusal is exactly when the evidence matters most: the signed
+      # observation, the attestation record naming the reason code, and GitHub's own
+      # attestation verification all exist by this point and are the record of WHY the
+      # verifier refused. Uploading them only on success discards the evidence for every
+      # outcome anyone would later want to audit.
       - name: Upload the verification bundle
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ship-gate-verification-bundle
