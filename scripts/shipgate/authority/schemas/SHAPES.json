@@ -201,28 +201,48 @@
    "versionTier": "OBSERVED-CAPTURE"
   },
   "gh.deployment.statuses.v1": {
-   "blockedReason": "No real capture, same cause as gh.run.v1. UNBLOCK per unblockProcedure (gh_deployment_statuses.json).",
+   "additionalCaptures": [
+    {
+     "captureFile": "gh_deployment_statuses_selfok.json",
+     "captureSha256": "2fb8594cd8422dcab70750c476c87d50bf4c33c363b421e046ee2721f88cb5aa",
+     "note": "Status transitions for the `selfok` deployment."
+    }
+   ],
+   "captureFile": "gh_deployment_statuses.json",
+   "captureSha256": "4f99ace7bb87f77ea46a956593b24565fa58f8ba59afd41fe205e6d821e64a66",
    "command": "gh api repos/{owner}/{repo}/deployments/{deployment_id}/statuses",
-   "note": "v4.2 deployment evidence: passage through the protected environment, not its existence. The judgement (`authority/enforcement.judge_deployment`) is pure and fully tested; THIS entry is what gates raw GitHub bytes becoming a judged record, and it fails closed until a real capture arrives.",
-   "provenance": "NONE",
-   "status": "BLOCKED",
+   "note": "Deployment status transitions for both deployments, same round. These carry the terminal state and the status records' own URLs, which is what `statusRunBound` is derived from - a status that does not name this run is not evidence about this run.",
+   "provenance": "REAL_CAPTURE",
+   "schemaFile": "gh_deployment_statuses.schema.json",
+   "status": "VALIDATED",
    "tool": "gh",
-   "toolVersion": "NOT-CAPTURED",
+   "toolReleaseDate": "2025-10-01",
+   "toolVersion": "v2.81.0",
    "versionConstraint": ">=2.60.0,<3.0.0",
-   "versionProvenance": "There is no capture, so there is no producing version to state. If it is ever captured it will land in the OBSERVED-CAPTURE or RUNNER-RESOLVED tier with its own `gh --version` beside it.",
-   "versionTier": "NOT-CAPTURED"
+   "versionProvenance": "gh_version_2.81.0.txt IS the producing binary printing its own version: it was captured by capture-evidence.sh in the same session, from the same gh process tree, as the responses pinned here. Observed, not asserted, which is why this is OBSERVED-CAPTURE and carries no versionCorroboration link.",
+   "versionTier": "OBSERVED-CAPTURE"
   },
   "gh.deployments.v1": {
-   "blockedReason": "No real capture, same cause as gh.run.v1. Needs a repository with at least one deployment to a protected environment. UNBLOCK per unblockProcedure (gh_deployments.json).",
+   "additionalCaptures": [
+    {
+     "captureFile": "gh_deployments_selfok.json",
+     "captureSha256": "f2c4b13c3d5b8c82d3d4d78dfcd8d17ba7ab1467b34f4393d1c585de181d9535",
+     "note": "The `selfok` deployment list for the same commit."
+    }
+   ],
+   "captureFile": "gh_deployments.json",
+   "captureSha256": "040a0ff3cba7c4a3fc23e2144f000a249d1f8a4665c55ba3abf0aefb6ec57b50",
    "command": "gh api 'repos/{owner}/{repo}/deployments?environment={env}&sha={sha}'",
-   "note": "v4.2 deployment evidence: passage through the protected environment, not its existence. The judgement (`authority/enforcement.judge_deployment`) is pure and fully tested; THIS entry is what gates raw GitHub bytes becoming a judged record, and it fails closed until a real capture arrives.",
-   "provenance": "NONE",
-   "status": "BLOCKED",
+   "note": "Deployment lists for each run's environment+sha, same 2026-08-08 capture round. Primary is the `production` deployment of run 31231928826; the `selfok` counterpart is pinned beside it. These carry deploymentId and the deployed sha, which is what binds a deployment to a decision's commit.",
+   "provenance": "REAL_CAPTURE",
+   "schemaFile": "gh_deployments.schema.json",
+   "status": "VALIDATED",
    "tool": "gh",
-   "toolVersion": "NOT-CAPTURED",
+   "toolReleaseDate": "2025-10-01",
+   "toolVersion": "v2.81.0",
    "versionConstraint": ">=2.60.0,<3.0.0",
-   "versionProvenance": "There is no capture, so there is no producing version to state. If it is ever captured it will land in the OBSERVED-CAPTURE or RUNNER-RESOLVED tier with its own `gh --version` beside it.",
-   "versionTier": "NOT-CAPTURED"
+   "versionProvenance": "gh_version_2.81.0.txt IS the producing binary printing its own version: it was captured by capture-evidence.sh in the same session, from the same gh process tree, as the responses pinned here. Observed, not asserted, which is why this is OBSERVED-CAPTURE and carries no versionCorroboration link.",
+   "versionTier": "OBSERVED-CAPTURE"
   },
   "gh.environment.list.v1": {
    "captureFile": "env_list.json",
@@ -318,28 +338,48 @@
    "versionTier": "OPERATOR-ASSERTED-CONFIRMED"
   },
   "gh.run.approvals.v1": {
-   "blockedReason": "No real capture, same cause as gh.run.v1. Needs a run that actually waited on a required reviewer. UNBLOCK per unblockProcedure (gh_run_approvals.json).",
+   "additionalCaptures": [
+    {
+     "captureFile": "gh_run_approvals_selfok.json",
+     "captureSha256": "6423ba20614312497226af8cb5779b391b48cca10b9a5bbac27fbe026a5a36e6",
+     "note": "Approval by the run's own actor - the adversarial half of the pair."
+    }
+   ],
+   "captureFile": "gh_run_approvals.json",
+   "captureSha256": "928d071c745df9984cf17737b8ef96fdc56c9865815403d444a65fc10b1ab4e5",
    "command": "gh api repos/{owner}/{repo}/actions/runs/{run_id}/approvals",
-   "note": "v4.2 deployment evidence: passage through the protected environment, not its existence. The judgement (`authority/enforcement.judge_deployment`) is pure and fully tested; THIS entry is what gates raw GitHub bytes becoming a judged record, and it fails closed until a real capture arrives.",
-   "provenance": "NONE",
-   "status": "BLOCKED",
+   "note": "The approval records, and the reason this round exists. gh_run_approvals.json records state=approved by TEST2121313, an account DISTINCT from the run's actor, on the protected environment. gh_run_approvals_selfok.json records state=approved by samerzakaria - the run's OWN actor - on an environment configured with prevent_self_review=false. The contrast is real infrastructure behaviour, not a fixture: GitHub refused the actor's own approval on `production` (pending_deployments reported current_user_can_approve=false) and permitted it on `selfok`. `notSelfApproved` can now be exercised against a passing and a failing REAL record.",
+   "provenance": "REAL_CAPTURE",
+   "schemaFile": "gh_run_approvals.schema.json",
+   "status": "VALIDATED",
    "tool": "gh",
-   "toolVersion": "NOT-CAPTURED",
+   "toolReleaseDate": "2025-10-01",
+   "toolVersion": "v2.81.0",
    "versionConstraint": ">=2.60.0,<3.0.0",
-   "versionProvenance": "There is no capture, so there is no producing version to state. If it is ever captured it will land in the OBSERVED-CAPTURE or RUNNER-RESOLVED tier with its own `gh --version` beside it.",
-   "versionTier": "NOT-CAPTURED"
+   "versionProvenance": "gh_version_2.81.0.txt IS the producing binary printing its own version: it was captured by capture-evidence.sh in the same session, from the same gh process tree, as the responses pinned here. Observed, not asserted, which is why this is OBSERVED-CAPTURE and carries no versionCorroboration link.",
+   "versionTier": "OBSERVED-CAPTURE"
   },
   "gh.run.v1": {
-   "blockedReason": "No real capture. The v4.2 build environment cannot reach api.github.com (proxy-restricted), and a workflow-run record cannot be hand-authored without becoming the exact operator-supplied file this kit refuses. UNBLOCK: from a repository you control, run the command above (any completed run), save the response verbatim to captures/ as gh_run.json per unblockProcedure, and promote this entry. Until then the deployment-evidence live path refuses and independence is capped by AUT_DEPLOYMENT_NOT_BOUND.",
+   "additionalCaptures": [
+    {
+     "captureFile": "gh_run_selfok.json",
+     "captureSha256": "7506c77a6bd4bcdc2e1066d47ff2656950bc7c595ae94756d3a48917f8d0da0a",
+     "note": "The self-approved counterpart: run 31232066405 to the `selfok` environment."
+    }
+   ],
+   "captureFile": "gh_run.json",
+   "captureSha256": "ad27b4dbc1ed83015c8a0053b240171bec23ef865e4c55cd704e4d80c0406909",
    "command": "gh api repos/{owner}/{repo}/actions/runs/{run_id}",
-   "note": "v4.2 deployment evidence: passage through the protected environment, not its existence. The judgement (`authority/enforcement.judge_deployment`) is pure and fully tested; THIS entry is what gates raw GitHub bytes becoming a judged record, and it fails closed until a real capture arrives.",
-   "provenance": "NONE",
-   "status": "BLOCKED",
+   "note": "Workflow-run records from a REAL gated deployment, captured 2026-08-08 from the public repository samerzakaria/shipgate-target-demo. Primary: run 31231928826, deployed to the protected `production` environment and approved by a SECOND GitHub account. Beside it, run 31232066405 to the deliberately weak `selfok` environment, approved by the run's own actor. Pinning both is the point: the same shape carrying a properly approved run and a self-approved one lets enforcement.judge_deployment be exercised in BOTH directions against real bytes rather than one direction against real bytes and the other against an imagined edit.",
+   "provenance": "REAL_CAPTURE",
+   "schemaFile": "gh_run.schema.json",
+   "status": "VALIDATED",
    "tool": "gh",
-   "toolVersion": "NOT-CAPTURED",
+   "toolReleaseDate": "2025-10-01",
+   "toolVersion": "v2.81.0",
    "versionConstraint": ">=2.60.0,<3.0.0",
-   "versionProvenance": "There is no capture, so there is no producing version to state. If it is ever captured it will land in the OBSERVED-CAPTURE or RUNNER-RESOLVED tier with its own `gh --version` beside it.",
-   "versionTier": "NOT-CAPTURED"
+   "versionProvenance": "gh_version_2.81.0.txt IS the producing binary printing its own version: it was captured by capture-evidence.sh in the same session, from the same gh process tree, as the responses pinned here. Observed, not asserted, which is why this is OBSERVED-CAPTURE and carries no versionCorroboration link.",
+   "versionTier": "OBSERVED-CAPTURE"
   },
   "gh.version.v1": {
    "additionalCaptures": [
@@ -347,6 +387,11 @@
      "captureFile": "gh_version_2.90.0.txt",
      "captureSha256": "3a76441fcd44f3ee4366d8aaeff9468105d8fe60a528306fb258d24b5e4a6c1a",
      "note": "v4.2.1: gh 2.90.0 printing its own version (source-built, version stamped)."
+    },
+    {
+     "captureFile": "gh_version_2.81.0.txt",
+     "captureSha256": "49b3aaa1e58ec5aa9aa376b824dde72dce7a0b7dbd5876926e1d79a8b5dc3685",
+     "note": "v4.2.2 field round: gh 2.81.0 printing its own version, the observed anchor for the four deployment-evidence captures."
     }
    ],
    "captureFile": "gh_version.txt",

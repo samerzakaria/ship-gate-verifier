@@ -627,6 +627,225 @@
    "title": "gh attestation verify --format json",
    "type": "array"
   },
+  "gh_deployment_statuses.schema.json": {
+   "$id": "shipgate.authority/gh.deployment.statuses.v1",
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "CLOSED item shape. Status transitions, newest first. `state` on the most recent is the terminal state; `log_url`/`target_url` name the run, which is what binds a status to THIS run rather than to the environment in general. Captured 2026-08-08.",
+   "items": {
+    "$id": "shipgate.authority/gh.deployment.statuses.v1.item",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "description": "one deployment status record",
+    "properties": {
+     "created_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T",
+      "type": "string"
+     },
+     "creator": {
+      "additionalProperties": true,
+      "properties": {
+       "id": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "login": {
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "login",
+       "id"
+      ],
+      "type": "object"
+     },
+     "deployment_url": {
+      "pattern": "^https://api\\.github\\.com/",
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     },
+     "environment": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "environment_url": {
+      "type": "string"
+     },
+     "id": {
+      "minimum": 1,
+      "type": "integer"
+     },
+     "log_url": {
+      "type": "string"
+     },
+     "node_id": {
+      "type": "string"
+     },
+     "performed_via_github_app": {
+      "type": "null"
+     },
+     "repository_url": {
+      "pattern": "^https://api\\.github\\.com/",
+      "type": "string"
+     },
+     "state": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "target_url": {
+      "type": "string"
+     },
+     "updated_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T",
+      "type": "string"
+     },
+     "url": {
+      "pattern": "^https://api\\.github\\.com/",
+      "type": "string"
+     }
+    },
+    "required": [
+     "created_at",
+     "creator",
+     "deployment_url",
+     "description",
+     "environment",
+     "environment_url",
+     "id",
+     "log_url",
+     "node_id",
+     "performed_via_github_app",
+     "repository_url",
+     "state",
+     "target_url",
+     "updated_at",
+     "url"
+    ],
+    "title": "status",
+    "type": "object"
+   },
+   "title": "gh api repos/{owner}/{repo}/deployments/{deployment_id}/statuses",
+   "type": "array"
+  },
+  "gh_deployments.schema.json": {
+   "$id": "shipgate.authority/gh.deployments.v1",
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "CLOSED item shape. The deployment records for a commit in an environment: deploymentId, the deployed sha and the environment name - what binds a deployment to a decision's commit. Captured 2026-08-08 from gh v2.81.0.",
+   "items": {
+    "$id": "shipgate.authority/gh.deployments.v1.item",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "description": "one deployment record",
+    "properties": {
+     "created_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T",
+      "type": "string"
+     },
+     "creator": {
+      "additionalProperties": true,
+      "properties": {
+       "id": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "login": {
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "login",
+       "id"
+      ],
+      "type": "object"
+     },
+     "description": {
+      "type": "null"
+     },
+     "environment": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "id": {
+      "minimum": 1,
+      "type": "integer"
+     },
+     "node_id": {
+      "type": "string"
+     },
+     "original_environment": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "payload": {
+      "type": "object"
+     },
+     "performed_via_github_app": {
+      "type": "object"
+     },
+     "production_environment": {
+      "type": "boolean"
+     },
+     "ref": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "repository_url": {
+      "pattern": "^https://api\\.github\\.com/",
+      "type": "string"
+     },
+     "sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+     },
+     "statuses_url": {
+      "pattern": "^https://api\\.github\\.com/",
+      "type": "string"
+     },
+     "task": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "transient_environment": {
+      "type": "boolean"
+     },
+     "updated_at": {
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T",
+      "type": "string"
+     },
+     "url": {
+      "pattern": "^https://api\\.github\\.com/",
+      "type": "string"
+     }
+    },
+    "required": [
+     "created_at",
+     "creator",
+     "description",
+     "environment",
+     "id",
+     "node_id",
+     "original_environment",
+     "payload",
+     "performed_via_github_app",
+     "production_environment",
+     "ref",
+     "repository_url",
+     "sha",
+     "statuses_url",
+     "task",
+     "transient_environment",
+     "updated_at",
+     "url"
+    ],
+    "title": "deployment",
+    "type": "object"
+   },
+   "title": "gh api 'repos/{owner}/{repo}/deployments?environment={env}&sha={sha}'",
+   "type": "array"
+  },
   "gh_environment.schema.json": {
    "$id": "shipgate.authority/gh.environment.v1",
    "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1127,6 +1346,285 @@
    ],
    "title": "gh api repos/{owner}/{repo}",
    "type": "object"
+  },
+  "gh_run.schema.json": {
+   "$id": "shipgate.authority/gh.run.v1",
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "additionalProperties": false,
+   "description": "CLOSED shape. The workflow-run record: which run, which commit, whose actor. `actor`/`triggering_actor` are builder-side principals - the identities an approval must NOT come from. Captured 2026-08-08 from gh v2.81.0 against a real gated deployment (production, second-account approval) and its self-approved counterpart.",
+   "properties": {
+    "actor": {
+     "additionalProperties": true,
+     "properties": {
+      "id": {
+       "minimum": 1,
+       "type": "integer"
+      },
+      "login": {
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "login",
+      "id"
+     ],
+     "type": "object"
+    },
+    "artifacts_url": {
+     "type": "string"
+    },
+    "cancel_url": {
+     "type": "string"
+    },
+    "check_suite_id": {
+     "type": "integer"
+    },
+    "check_suite_node_id": {
+     "type": "string"
+    },
+    "check_suite_url": {
+     "type": "string"
+    },
+    "conclusion": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "created_at": {
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T",
+     "type": "string"
+    },
+    "display_title": {
+     "type": "string"
+    },
+    "event": {
+     "type": "string"
+    },
+    "head_branch": {
+     "type": "string"
+    },
+    "head_commit": {
+     "type": "object"
+    },
+    "head_repository": {
+     "additionalProperties": true,
+     "properties": {
+      "full_name": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "id": {
+       "minimum": 1,
+       "type": "integer"
+      }
+     },
+     "required": [
+      "id",
+      "full_name"
+     ],
+     "type": "object"
+    },
+    "head_sha": {
+     "pattern": "^[0-9a-f]{40}$",
+     "type": "string"
+    },
+    "html_url": {
+     "pattern": "^https://",
+     "type": "string"
+    },
+    "id": {
+     "minimum": 1,
+     "type": "integer"
+    },
+    "jobs_url": {
+     "type": "string"
+    },
+    "logs_url": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "node_id": {
+     "type": "string"
+    },
+    "path": {
+     "type": "string"
+    },
+    "previous_attempt_url": {
+     "type": "null"
+    },
+    "pull_requests": {
+     "type": "array"
+    },
+    "referenced_workflows": {
+     "type": "array"
+    },
+    "repository": {
+     "additionalProperties": true,
+     "properties": {
+      "full_name": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "id": {
+       "minimum": 1,
+       "type": "integer"
+      }
+     },
+     "required": [
+      "id",
+      "full_name"
+     ],
+     "type": "object"
+    },
+    "rerun_url": {
+     "type": "string"
+    },
+    "run_attempt": {
+     "minimum": 1,
+     "type": "integer"
+    },
+    "run_number": {
+     "type": "integer"
+    },
+    "run_started_at": {
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T",
+     "type": "string"
+    },
+    "status": {
+     "minLength": 1,
+     "type": "string"
+    },
+    "triggering_actor": {
+     "additionalProperties": true,
+     "properties": {
+      "id": {
+       "minimum": 1,
+       "type": "integer"
+      },
+      "login": {
+       "minLength": 1,
+       "type": "string"
+      }
+     },
+     "required": [
+      "login",
+      "id"
+     ],
+     "type": "object"
+    },
+    "updated_at": {
+     "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T",
+     "type": "string"
+    },
+    "url": {
+     "pattern": "^https://api\\.github\\.com/",
+     "type": "string"
+    },
+    "workflow_id": {
+     "type": "integer"
+    },
+    "workflow_url": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "actor",
+    "artifacts_url",
+    "cancel_url",
+    "check_suite_id",
+    "check_suite_node_id",
+    "check_suite_url",
+    "conclusion",
+    "created_at",
+    "display_title",
+    "event",
+    "head_branch",
+    "head_commit",
+    "head_repository",
+    "head_sha",
+    "html_url",
+    "id",
+    "jobs_url",
+    "logs_url",
+    "name",
+    "node_id",
+    "path",
+    "previous_attempt_url",
+    "pull_requests",
+    "referenced_workflows",
+    "repository",
+    "rerun_url",
+    "run_attempt",
+    "run_number",
+    "run_started_at",
+    "status",
+    "triggering_actor",
+    "updated_at",
+    "url",
+    "workflow_id",
+    "workflow_url"
+   ],
+   "title": "gh api repos/{owner}/{repo}/actions/runs/{run_id}",
+   "type": "object"
+  },
+  "gh_run_approvals.schema.json": {
+   "$id": "shipgate.authority/gh.run.approvals.v1",
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "CLOSED item shape. Who approved the gated deployment and in what state. The captured pair is the point: one approval by an account distinct from the run's actor, one by the actor itself. Captured 2026-08-08 from gh v2.81.0.",
+   "items": {
+    "$id": "shipgate.authority/gh.run.approvals.v1.item",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "description": "one approval record",
+    "properties": {
+     "comment": {
+      "type": "string"
+     },
+     "environments": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "state": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "user": {
+      "additionalProperties": true,
+      "properties": {
+       "id": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "login": {
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "login",
+       "id"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "comment",
+     "environments",
+     "state",
+     "user"
+    ],
+    "title": "approval",
+    "type": "object"
+   },
+   "title": "gh api repos/{owner}/{repo}/actions/runs/{run_id}/approvals",
+   "type": "array"
   },
   "oidc_github_claims.schema.json": {
    "$id": "shipgate.authority/oidc.github.claims.v1",

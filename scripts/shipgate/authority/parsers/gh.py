@@ -33,6 +33,10 @@ SHAPE_ENV = "gh.environment.v1"
 SHAPE_ENV_LIST = "gh.environment.list.v1"
 SHAPE_ENV_SECRETS = "gh.environment.secrets.v1"
 SHAPE_ENV_PROTECTED = "gh.environment.protected.v1"
+SHAPE_RUN = "gh.run.v1"
+SHAPE_DEPLOYMENTS = "gh.deployments.v1"
+SHAPE_DEPLOYMENT_STATUSES = "gh.deployment.statuses.v1"
+SHAPE_RUN_APPROVALS = "gh.run.approvals.v1"
 
 VERSION_GATE = C.VersionGate("gh", minimum=(2, 40, 0), below=(3, 0, 0), validated="v2.65.0")
 
@@ -364,9 +368,259 @@ def principal_from_environment(env_record, repo_binding=None):
     }
 
 
+# =======================================================================================
+# deployment passage — the four shapes that turn "a gate exists" into "this run used it"
+# =======================================================================================
+#
+# These four parsers were written against REAL captures, not against an imagined response:
+# gh_run.json, gh_deployments.json, gh_deployment_statuses.json and gh_run_approvals.json,
+# taken 2026-08-08 from a public repository whose `production` environment required a
+# SECOND account's approval, plus the self-approved counterpart from a `selfok` environment
+# configured with prevent_self_review false. Both halves are pinned in SHAPES.json, which is
+# why `notSelfApproved` can be exercised in both directions from observed bytes rather than
+# in one direction from observed bytes and the other from an edit.
+#
+# Nothing here judges. Extraction produces the record; `enforcement.judge_deployment` is the
+# pure predicate that decides, and it is unchanged.
+
+
+def parse_run(raw, gh_version=None, registry=None):
+    """`gh api repos/{o}/{r}/actions/runs/{id}` -> the run and its builder-side principals."""
+    reg = registry or shapes.registry()
+    gated = _gate_version(gh_version, SHAPE_RUN)
+    if gated is not None:
+        return gated
+    res, doc = C.load_json(raw, SHAPE_RUN)
+    if res is not None:
+        return res
+    good, code, detail = shapes.validate_shape(doc, SHAPE_RUN, reg)
+    if not good:
+        return C.fail(SHAPE_RUN, code, detail)
+    # BOTH actors are builder-side. `actor` is who the run is attributed to and
+    # `triggering_actor` is who started this attempt; on a re-run they differ, and an
+    # approval from EITHER is the builder approving itself. Collecting only one of them
+    # would leave a re-run as a hole in the self-approval check.
+    return C.ok(SHAPE_RUN, {
+        "runId": doc["id"],
+        "runAttempt": doc["run_attempt"],
+        "runHeadSha": doc["head_sha"],
+        "runActorId": doc["actor"]["id"],
+        "runActorLogin": doc["actor"]["login"],
+        "triggeringActorId": doc["triggering_actor"]["id"],
+        "triggeringActorLogin": doc["triggering_actor"]["login"],
+        "repositoryId": doc["repository"]["id"],
+        "repositoryFullName": doc["repository"]["full_name"],
+        "status": doc["status"],
+        "conclusion": doc["conclusion"],
+        "htmlUrl": doc["html_url"],
+    })
+
+
+def parse_deployments(raw, gh_version=None, registry=None):
+    """`gh api 'repos/{o}/{r}/deployments?environment={env}&sha={sha}'` -> the deployments."""
+    reg = registry or shapes.registry()
+    gated = _gate_version(gh_version, SHAPE_DEPLOYMENTS)
+    if gated is not None:
+        return gated
+    res, doc = C.load_json(raw, SHAPE_DEPLOYMENTS)
+    if res is not None:
+        return res
+    good, code, detail = shapes.validate_shape(doc, SHAPE_DEPLOYMENTS, reg)
+    if not good:
+        return C.fail(SHAPE_DEPLOYMENTS, code, detail)
+    if not doc:
+        return C.fail(SHAPE_DEPLOYMENTS, R.AUT_DEPLOYMENT_NOT_BOUND,
+                      "no deployment exists for this commit in this environment; a run that "
+                      "never deployed did not pass through the gate")
+    return C.ok(SHAPE_DEPLOYMENTS, {
+        "count": len(doc),
+        "deployments": [{
+            "deploymentId": d["id"],
+            "environment": d["environment"],
+            "originalEnvironment": d["original_environment"],
+            "deploymentSha": d["sha"],
+            "ref": d["ref"],
+            "task": d["task"],
+            "creatorId": d["creator"]["id"],
+            "creatorLogin": d["creator"]["login"],
+            "statusesUrl": d["statuses_url"],
+        } for d in doc],
+    })
+
+
+def parse_deployment_statuses(raw, gh_version=None, registry=None):
+    """`gh api repos/{o}/{r}/deployments/{id}/statuses` -> the terminal state, and its run.
+
+    GitHub returns statuses newest-first. This picks the most recent by `created_at` rather
+    than trusting position: an ordering that happens to hold on one capture is not a
+    contract, and the terminal state is the one thing this record exists to report.
+    """
+    reg = registry or shapes.registry()
+    gated = _gate_version(gh_version, SHAPE_DEPLOYMENT_STATUSES)
+    if gated is not None:
+        return gated
+    res, doc = C.load_json(raw, SHAPE_DEPLOYMENT_STATUSES)
+    if res is not None:
+        return res
+    good, code, detail = shapes.validate_shape(doc, SHAPE_DEPLOYMENT_STATUSES, reg)
+    if not good:
+        return C.fail(SHAPE_DEPLOYMENT_STATUSES, code, detail)
+    if not doc:
+        return C.fail(SHAPE_DEPLOYMENT_STATUSES, R.AUT_DEPLOYMENT_NOT_BOUND,
+                      "the deployment has no status records, so nothing says it completed")
+    latest = max(doc, key=lambda s: (s["created_at"], s["id"]))
+    return C.ok(SHAPE_DEPLOYMENT_STATUSES, {
+        "statusState": latest["state"],
+        "statusId": latest["id"],
+        "statusEnvironment": latest["environment"],
+        "statusCreatedAt": latest["created_at"],
+        # The URLs the status names itself. `status_run_bound` reads these; they are kept
+        # verbatim so the binding decision can be re-derived from the record.
+        "logUrl": latest.get("log_url") or "",
+        "targetUrl": latest.get("target_url") or "",
+        "deploymentUrl": latest.get("deployment_url") or "",
+        "stateHistory": [s["state"] for s in sorted(doc, key=lambda s: s["created_at"])],
+    })
+
+
+def parse_run_approvals(raw, gh_version=None, registry=None):
+    """`gh api repos/{o}/{r}/actions/runs/{id}/approvals` -> who approved, and in what state."""
+    reg = registry or shapes.registry()
+    gated = _gate_version(gh_version, SHAPE_RUN_APPROVALS)
+    if gated is not None:
+        return gated
+    res, doc = C.load_json(raw, SHAPE_RUN_APPROVALS)
+    if res is not None:
+        return res
+    good, code, detail = shapes.validate_shape(doc, SHAPE_RUN_APPROVALS, reg)
+    if not good:
+        return C.fail(SHAPE_RUN_APPROVALS, code, detail)
+    return C.ok(SHAPE_RUN_APPROVALS, {
+        "count": len(doc),
+        # Shaped exactly as enforcement.judge_deployment reads them. Ids are stringified
+        # because the builder-side principal set they are compared against is strings.
+        "approvals": [{
+            "approverId": str(a["user"]["id"]),
+            "approverLogin": a["user"]["login"],
+            "state": a["state"],
+            "environments": [e.get("name") for e in a.get("environments") or ()
+                             if isinstance(e, dict)],
+        } for a in doc],
+    })
+
+
+def status_run_bound(status_data, run_id):
+    """True when the STATUS's own URLs name this run.
+
+    A deployment status that does not name the run is evidence about the environment, not
+    about this run: without this check a status from any other run to the same environment
+    would satisfy it. Matching is on the `/actions/runs/{id}` path segment with a boundary
+    after it, so run 312 does not match run 3120.
+    """
+    if not isinstance(status_data, dict) or not run_id:
+        return False
+    needle = "/actions/runs/" + str(run_id)
+    for url in (status_data.get("logUrl") or "", status_data.get("targetUrl") or ""):
+        idx = url.find(needle)
+        if idx >= 0:
+            rest = url[idx + len(needle):]
+            if rest == "" or rest[0] in "/?#":
+                return True
+    return False
+
+
+def compose_deployment_record(run_data, deployments_data, statuses_data, approvals_data,
+                              environment_record, environment_name=""):
+    """The composed deployment-evidence record `enforcement.judge_deployment` judges.
+
+    Every field comes from a shape-VALIDATED parse. The protection facts come from the
+    ENVIRONMENT record rather than from anything the run could influence: whether
+    self-review was prevented and admin bypass disabled is a property of the environment's
+    configuration, and a builder able to assert those about itself would be back to
+    manufacturing its own second opinion.
+
+    Returns (record, problem). `problem` is a non-empty string when the parts cannot be
+    composed; the record is never partially invented to fill a gap.
+    """
+    for name, part in (("run", run_data), ("deployments", deployments_data),
+                       ("statuses", statuses_data), ("approvals", approvals_data)):
+        if not isinstance(part, dict):
+            return None, "the " + name + " part is missing from the observation"
+    wanted = (environment_name or "").strip()
+    candidates = deployments_data.get("deployments") or []
+    matching = [d for d in candidates
+                if d.get("environment") == wanted] if wanted else list(candidates)
+    if not matching:
+        return None, ("no deployment to environment " + repr(wanted) + " is present in the "
+                      "observed deployment list")
+    # GitHub returns deployments newest-first; the deployment this run produced is the one
+    # whose statuses were fetched, so the first matching record is the subject.
+    deployment = matching[0]
+    env = environment_record if isinstance(environment_record, dict) else {}
+    raw_env = env.get("raw") if isinstance(env.get("raw"), dict) else env
+    rules = raw_env.get("protection_rules") or []
+    reviewer_rules = [r for r in rules
+                      if isinstance(r, dict) and r.get("type") == "required_reviewers"]
+    # An unknown protection is an absent protection: `prevent_self_review` must be PRESENT
+    # and true on every required_reviewers rule, not merely not-false.
+    self_review_prevented = bool(reviewer_rules) and all(
+        r.get("prevent_self_review") is True for r in reviewer_rules)
+    admin_bypass_disabled = raw_env.get("can_admins_bypass") is False
+    policy = raw_env.get("deployment_branch_policy")
+    branch_policy_satisfied = (isinstance(policy, dict)
+                               and policy.get("protected_branches") is True)
+    record = {
+        "repositoryId": run_data.get("repositoryId"),
+        "runId": run_data.get("runId"),
+        "runAttempt": run_data.get("runAttempt"),
+        "runHeadSha": run_data.get("runHeadSha"),
+        "runActorId": run_data.get("runActorId"),
+        "deploymentId": deployment.get("deploymentId"),
+        "environment": deployment.get("environment"),
+        "deploymentSha": deployment.get("deploymentSha"),
+        "statusState": statuses_data.get("statusState"),
+        "statusRunBound": status_run_bound(statuses_data, run_data.get("runId")),
+        "approvals": list(approvals_data.get("approvals") or ()),
+        "selfReviewPrevented": self_review_prevented,
+        "adminBypassDisabled": admin_bypass_disabled,
+        "branchPolicySatisfied": branch_policy_satisfied,
+    }
+    return record, ""
+
+
+def builder_side_ids(run_data):
+    """Both builder-side principals from a parsed run, as strings.
+
+    `triggering_actor` is included deliberately: on a re-run it is the identity that started
+    THIS attempt, and an approval from it is still the builder approving itself.
+    """
+    if not isinstance(run_data, dict):
+        return ()
+    out = [run_data.get("runActorId"), run_data.get("triggeringActorId")]
+    return tuple(str(x) for x in out if x)
+
+
 __all__ = [
-    "PRINCIPAL_RULE_TYPES", "QUALIFYING_REQUIREMENTS", "SHAPE_ENV", "SHAPE_ENV_LIST", "SHAPE_ENV_PROTECTED",
-    "SHAPE_ENV_SECRETS", "SHAPE_REPO", "VERSION_GATE", "check_repo_binding",
-    "is_qualifying_environment", "parse_environment", "parse_environment_list",
-    "parse_environment_secrets", "parse_repo", "principal_from_environment",
+    "PRINCIPAL_RULE_TYPES",
+    "QUALIFYING_REQUIREMENTS",
+    "SHAPE_ENV",
+    "SHAPE_ENV_LIST",
+    "SHAPE_ENV_PROTECTED",
+    "SHAPE_ENV_SECRETS",
+    "SHAPE_REPO",
+    "VERSION_GATE",
+    "builder_side_ids",
+    "check_repo_binding",
+    "compose_deployment_record",
+    "is_qualifying_environment",
+    "parse_deployment_statuses",
+    "parse_deployments",
+    "parse_environment",
+    "parse_environment_list",
+    "parse_environment_secrets",
+    "parse_repo",
+    "parse_run",
+    "parse_run_approvals",
+    "principal_from_environment",
+    "status_run_bound",
 ]

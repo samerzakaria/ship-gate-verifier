@@ -1,0 +1,2 @@
+vendored ship-gate scripts/ tree digest (sha256 over sorted "sha256  relpath" lines)
+ec85943df42adc53e411fcd22fb4790baaf92297c4aeb87d5a392a881666126a

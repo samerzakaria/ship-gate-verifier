@@ -899,15 +899,73 @@ class GithubEnvironmentPrincipalVerifier(Verifier):
                         f"kit does not make those. See SHAPES.json unblockProcedure."),
                 "observedParts": sorted(n for n, v in observed.items()
                                         if isinstance(v, dict) and "bodySha256" in v)}
-        # All four shapes validated: this branch exists for the release AFTER the captures
-        # arrive, and refuses until the extraction that must accompany them is written
-        # against the real bytes — a parser written against imagined bytes is exactly the
-        # "compatibility branch with no real fixture" this codebase removes.
-        return None, {
-            "status": "UNIMPLEMENTED",
-            "why": ("the deployment shapes are validated but no extraction has been "
-                    "written against their real captures yet; refusing rather than "
-                    "improvising one")}
+        # All four shapes are VALIDATED and the extraction below was written against their
+        # REAL captures (2026-08-08; see SHAPES.json). The parse re-derives every part from
+        # the BYTES the observer kept — `bodyB64` — not from the convenience `body` parse
+        # beside them, because a digest over bytes nobody kept cannot be rechecked and the
+        # two-phase path signs the digest, not the dict.
+        import base64 as _b64
+
+        def _bytes(part_name):
+            part = observation.get(part_name)
+            if not isinstance(part, dict):
+                return None, f"the {part_name} part is absent from the observation"
+            b64 = part.get("bodyB64")
+            if not isinstance(b64, str) or not b64:
+                return None, f"the {part_name} part kept no bytes to re-derive its parse from"
+            try:
+                raw = _b64.b64decode(b64, validate=True)
+            except Exception as exc:
+                return None, f"the {part_name} part's kept bytes are not valid base64: {exc}"
+            recorded = part.get("bodySha256")
+            got = hashlib.sha256(raw).hexdigest()
+            if recorded and got != recorded:
+                return None, (f"the {part_name} part's bytes do not match the digest recorded "
+                              f"beside them (recorded {str(recorded)[:16]}…, got {got[:16]}…)")
+            return raw, ""
+
+        parsed = {}
+        for part_name, parse in (("run", gh_parser.parse_run),
+                                 ("deployments", gh_parser.parse_deployments),
+                                 ("deploymentStatuses", gh_parser.parse_deployment_statuses),
+                                 ("approvals", gh_parser.parse_run_approvals)):
+            raw, problem = _bytes(part_name)
+            if problem:
+                return None, {"status": "BLOCKED", "why": problem}
+            res = parse(raw)
+            if not res.ok:
+                return None, {"status": "BLOCKED",
+                              "why": (f"the {part_name} part did not parse as its validated "
+                                      f"shape: {res.reason_code}: {res.detail}")}
+            parsed[part_name] = res.data
+
+        # The protection facts come from the ENVIRONMENT record, which is observed on the
+        # same authenticated pass. A run cannot assert its own gate's strictness.
+        env_raw, problem = _bytes("environment")
+        if problem:
+            return None, {"status": "BLOCKED", "why": problem}
+        env_res = gh_parser.parse_environment(env_raw)
+        if not env_res.ok:
+            return None, {"status": "BLOCKED",
+                          "why": (f"the environment record did not parse as its validated "
+                                  f"shape: {env_res.reason_code}: {env_res.detail}")}
+
+        record, problem = gh_parser.compose_deployment_record(
+            parsed["run"], parsed["deployments"], parsed["deploymentStatuses"],
+            parsed["approvals"], env_res.data, env_res.data.get("name") or "")
+        if problem:
+            return None, {"status": "BLOCKED", "why": problem}
+        return record, {
+            "status": "OBSERVED",
+            "why": ("deployment passage was extracted from shape-validated parses of the "
+                    "observed run, deployments, statuses and approvals; judgement is "
+                    "enforcement.judge_deployment, which this does not pre-empt"),
+            "shapes": list(shape_ids),
+            "deploymentId": record.get("deploymentId"),
+            "environment": record.get("environment"),
+            "builderSideIds": list(gh_parser.builder_side_ids(parsed["run"])),
+            "observedParts": sorted(n for n, v in observed.items()
+                                    if isinstance(v, dict) and "bodySha256" in v)}
 
     def _observe(self, config, decision, configured_path):
         """Make the live observation, or refuse. Never falls back to a file."""

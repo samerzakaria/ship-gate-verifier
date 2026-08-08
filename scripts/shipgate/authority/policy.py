@@ -75,7 +75,7 @@ POLICY_STATE_ENV = "SHIPGATE_AUTHORITY_POLICY_STATE"
 #: nobody controls would make the machinery appear complete while authorising nothing, and
 #: somebody would eventually point a config at it. An adopter who runs their own trust root
 #: forks this constant deliberately, which is a decision with a diff attached.
-POLICY_ROOTS: Tuple[Dict[str, str], ...] = ({"publicKeyPath": "policies/policy-root.pub"},)
+POLICY_ROOTS: Tuple[Dict[str, str], ...] = ()
 
 #: Issuers a policy signature may come from. Pinned, not widenable.
 POLICY_ISSUERS = (

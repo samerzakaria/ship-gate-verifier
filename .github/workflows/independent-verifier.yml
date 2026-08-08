@@ -167,12 +167,12 @@ jobs:
         # into admissible evidence.
         run: |
           python3 scripts/gate.py observe \
-            --decision candidate/decision.json \
             --repo "${{ inputs.target_repository }}" \
             --environment production \
             --run-id "${{ inputs.target_run_id }}" \
             --run-attempt "${{ inputs.target_run_attempt }}" \
-            --out evidence/observation.json
+            --out evidence/observation.json \
+            candidate/decision.json
 
       - name: Sign the observation challenge with this workflow's identity (keyless)
         # COSIGN_EXPERIMENTAL is not needed on cosign v3; the ambient OIDC token is used.
@@ -231,9 +231,9 @@ jobs:
           GH_TOKEN: ${{ secrets.TARGET_READ_TOKEN }}
         run: |
           python3 scripts/gate.py attest \
-            --decision candidate/decision.json \
             --authority-config verifier-config.json \
-            --out evidence/attestation.json
+            --out evidence/attestation.json \
+            candidate/decision.json
 
       # Persist the advanced rollback state. Runs LAST and only after a successful
       # verification, so a failed run cannot burn a version number. The branch protection
