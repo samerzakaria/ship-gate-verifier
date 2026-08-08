@@ -10,6 +10,6 @@
     "https://github.com/samerzakaria/ship-gate-verifier/.github/workflows/independent-verifier.yml@refs/heads/main"
   ],
   "requiredEnvironment": "production",
-  "notBefore": 1786151070,
-  "notAfter": 1817687070
+  "notBefore": 1786158322,
+  "notAfter": 1817694322
 }
