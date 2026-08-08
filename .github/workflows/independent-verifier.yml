@@ -223,8 +223,9 @@ jobs:
               "schema": "shipgate.authority.config/1",
               "mode": "independent",
               "externalTime": int(open("evidence/external-time.txt").read().strip()),
-              # Candidate and verifier artifacts below are workspace-relative. A nested
-              # evidenceDir would make the positive path unreachable.
+              # All configured paths below are workspace-relative. Making evidenceDir itself
+              # `evidence` would resolve verifier paths as evidence/evidence/... and the
+              # candidate as evidence/candidate/....
               "evidenceDir": ".",
               "gh": {
                   "repo": "${{ inputs.target_repository }}",
@@ -251,6 +252,11 @@ jobs:
           # ship-gate's own gh invocation runs in LIVE mode and needs the TARGET's read
           # token — the same credential-not-answer as every other read in this file.
           GH_TOKEN: ${{ secrets.TARGET_READ_TOKEN }}
+          # Phase 2 re-loads and verifies the external policy. Authorization recorded in
+          # phase 1 is not trusted merely because observation.json says it happened.
+          SHIPGATE_AUTHORITY_POLICY: policies/${{ inputs.target_repository }}.json
+          SHIPGATE_AUTHORITY_POLICY_BUNDLE: policies/${{ inputs.target_repository }}.bundle
+          SHIPGATE_AUTHORITY_POLICY_STATE: policy-state/highest-seen.json
         run: |
           python3 scripts/gate.py attest \
             --authority-config verifier-config.json \
