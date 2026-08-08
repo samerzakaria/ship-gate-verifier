@@ -223,7 +223,10 @@ jobs:
               "schema": "shipgate.authority.config/1",
               "mode": "independent",
               "externalTime": int(open("evidence/external-time.txt").read().strip()),
-              "evidenceDir": "evidence",
+    # Candidate and verifier artifacts below are workspace-relative.  A nested evidenceDir
+    # would resolve the signed observation as evidence/evidence/... and make the positive
+    # path unreachable.
+    "evidenceDir": ".",
               "gh": {
                   "environmentName": "production",
                   "runId": "${{ inputs.target_run_id }}",
