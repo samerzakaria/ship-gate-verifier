@@ -1,0 +1,15 @@
+{
+  "schema": "shipgate.authority.policy/1",
+  "repository": "samerzakaria/shipgate-target-demo",
+  "repositoryId": 1327298933,
+  "version": 1,
+  "authorizedBuilders": [
+    "https://github.com/samerzakaria/shipgate-target-demo/.github/workflows/build-and-deploy.yml@refs/heads/main"
+  ],
+  "authorizedVerifiers": [
+    "https://github.com/samerzakaria/ship-gate-verifier/.github/workflows/independent-verifier.yml@refs/heads/main"
+  ],
+  "requiredEnvironment": "production",
+  "notBefore": 1786151070,
+  "notAfter": 1817687070
+}
