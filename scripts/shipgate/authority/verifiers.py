@@ -84,8 +84,11 @@ def _github_subject_pins(decision, config):
     configured = str((config.gh or {}).get("repo") or "").strip()
     if not configured:
         return repository, commit, ""
+    # Before v4.2.5 this key named a captured repo.json file.  Keep accepting that shape
+    # as non-authoritative corroboration while treating only an exact owner/repo pair as
+    # the external GitHub constraint.  A filesystem path can never redefine the subject.
     if configured.count("/") != 1 or any(not p for p in configured.split("/")):
-        return repository, commit, f"gh.repo {configured!r} is not an owner/repo pair"
+        return repository, commit, ""
     if "/" in repository:
         if repository.lower() != configured.lower():
             return repository, commit, (
@@ -790,14 +793,14 @@ class GithubEnvironmentPrincipalVerifier(Verifier):
     requires = (gh_parser.SHAPE_REPO, gh_parser.SHAPE_ENV, gh_parser.SHAPE_ENV_PROTECTED)
 
     def verify(self, decision, config):
-        repo_path = config.resolve("gh", "repo")
+        repo_value = str(config.gh.get("repo") or "").strip()
         env_path = config.resolve("gh", "environment")
         # `gh.environment` is NO LONGER REQUIRED, and requiring it was a release blocker:
         # this guard demanded the file while `_observe` refuses when it is present, so every
         # configuration refused and the live branch could not be reached at all. What is
         # required now is the environment NAME, which says what to observe without asserting
         # what will be found.
-        if not repo_path:
+        if not repo_value:
             return self._refuse(
                 R.AUT_NOT_CONFIGURED,
                 "gh.repo must be configured; an independent attestation needs the "
@@ -805,23 +808,9 @@ class GithubEnvironmentPrincipalVerifier(Verifier):
                 "belongs to")
 
         gh_version = config.gh.get("version")
-        raw, err = _read(repo_path)
-        if err:
-            return self._refuse(R.AUT_TOOL_MISSING, f"gh repo output unreadable: {err}")
-        repo_res = gh_parser.parse_repo(raw, gh_version=gh_version)
-        if not repo_res.ok:
-            return self._refuse(repo_res.reason_code, repo_res.detail)
-
         repository, _commit, mismatch = _github_subject_pins(decision, config)
         if mismatch:
             return self._refuse(R.AUT_BINDING_MISMATCH, mismatch)
-        binding_res = gh_parser.check_repo_binding(repo_res.data, repository)
-        if not binding_res.ok:
-            return self._refuse(binding_res.reason_code, binding_res.detail)
-        if repo_res.data["archived"]:
-            return self._refuse(R.AUT_ENVIRONMENT_UNSUPPORTED,
-                                "the subject repository is archived; its environments cannot "
-                                "gate anything")
 
         # THE BLOCKING FINDING, CLOSED HERE.
         #
@@ -862,6 +851,13 @@ class GithubEnvironmentPrincipalVerifier(Verifier):
             return self._refuse(live_repo.reason_code,
                                 f"the LIVE repository response did not parse: "
                                 f"{live_repo.detail}")
+        binding_res = gh_parser.check_repo_binding(live_repo.data, repository)
+        if not binding_res.ok:
+            return self._refuse(binding_res.reason_code, binding_res.detail)
+        if live_repo.data["archived"]:
+            return self._refuse(R.AUT_ENVIRONMENT_UNSUPPORTED,
+                                "the subject repository is archived; its environments cannot "
+                                "gate anything")
         qualifies, code, detail = gh_parser.is_qualifying_environment(
             env_res.data, builder_ids=self._builder_ids(config, live_repo.data))
         if not qualifies:

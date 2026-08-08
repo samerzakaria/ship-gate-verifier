@@ -28,7 +28,7 @@ _FILE_KEYS = (
     ("cosign", "versionJson"), ("cosign", "bundle"), ("cosign", "verifyStdout"),
     ("cosign", "verifyStderr"), ("cosign", "blob"), ("cosign", "publicKey"),
     ("rekor", "restEntry"), ("rekor", "cliGet"), ("rekor", "cliLogInfo"),
-    ("gh", "repo"), ("gh", "environment"), ("gh", "environmentList"),
+    ("gh", "environment"), ("gh", "environmentList"),
     ("gh", "environmentSecrets"),
     ("gh", "attestationArtifact"), ("gh", "attestationBundle"),
     ("gh", "attestationTrustedRoot"),
@@ -41,7 +41,7 @@ class AuthorityAdapter:
     """Base class. Subclasses set `name`, `version`, `ceiling`, `verifier_classes`, `mode`."""
 
     name = "authority"
-    version = "shipgate-authority/4.2.4"
+    version = "shipgate-authority/4.2.5"
     mode = "ci"
     ceiling = ProvenanceStatus.UNAVAILABLE
     verifier_classes = ()
